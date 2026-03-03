@@ -2,30 +2,25 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+// NEW: import real backend service
+import { analyzeScreens, type AnalyzeResponse } from "../services/analyzer";
+
 const router = useRouter();
 
+// holds user-selected screenshot files
 const screenshotFiles = ref<File[]>([]);
+
+// backend response data (converted to your UI format)
+const report = ref<Array<{ fileName: string; issues: string[] }>>([]);
+
 const isProcessing = ref(false);
-// const showReportCard = ref(false);
 const showReportDialog = ref(false);
-
-
-type ReportItem = {
-  fileName: string;
-  issues: string[];
-};
-
-const report = ref<ReportItem[]>([]);
-
-const baseIssues = [
-  'Header: Main navigation header is not aligned to the primary content grid.',
-  'Buttons: Primary and secondary buttons use inconsistent padding and radius.',
-  'Layout: Vertical spacing between sections is not following the 8px spacing scale.',
-  'Typography: Body text does not follow the design-system line height on mobile.',
-];
 
 const fileInputEl = ref<HTMLInputElement | null>(null);
 
+/* -----------------------
+      FILE HANDLING
+-------------------------*/
 const triggerFileSelect = () => {
   fileInputEl.value?.click();
 };
@@ -33,61 +28,61 @@ const triggerFileSelect = () => {
 const handleFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
-  if (file) {
-    screenshotFiles.value.push(file);
-  }
-  // Reset so selecting the same file again still fires change
+  if (file) screenshotFiles.value.push(file);
+
+  // allow selecting the same file twice
   target.value = '';
 };
 
-// const runFakeAnalysis = () => {
-//   if (!screenshotFiles.value.length) {
-//     report.value = [
-//       {
-//         fileName: 'No file selected',
-//         issues: ['Please add at least one screenshot to generate a report.'],
-//       },
-//     ];
-//     showReportCard.value = true;
-//     return;
-//   }
-
-//   isProcessing.value = true;
-
-//   setTimeout(() => {
-//     report.value = screenshotFiles.value.map((file) => ({
-//       fileName: file.name,
-//       issues: baseIssues,
-//     }));
-//     isProcessing.value = false;
-//     showReportCard.value = true;
-//   }, 800);
-// };
-const runFakeAnalysis = () => {
+/* -----------------------
+      REAL ANALYSIS
+-------------------------*/
+const runAnalysis = async () => {
   if (!screenshotFiles.value.length) {
     report.value = [
       {
-        fileName: 'No file selected',
-        issues: ['Please add at least one screenshot to generate a report.'],
-      },
+        fileName: "No file selected",
+        issues: ["Please add at least one screenshot to generate a report."]
+      }
     ];
     showReportDialog.value = true;
     return;
   }
 
   isProcessing.value = true;
+  report.value = [];
+  showReportDialog.value = false;
 
-  setTimeout(() => {
-    report.value = screenshotFiles.value.map((file) => ({
-      fileName: file.name,
-      issues: baseIssues,
+  try {
+    // call backend API
+    const apiRes: AnalyzeResponse = await analyzeScreens(screenshotFiles.value);
+
+    // convert backend format → your UI format
+    report.value = apiRes.screens.map((screen) => ({
+      fileName: screen.filename,
+      issues: screen.issues.map(
+        (i) => `(${i.severity}) ${i.type}: ${i.message}`
+      ),
     }));
-    isProcessing.value = false;
+
     showReportDialog.value = true;
-  }, 800);
+  } catch (err: any) {
+    console.error("Analysis error:", err);
+    report.value = [
+      {
+        fileName: "Error",
+        issues: ["Something went wrong while analyzing your screenshots."]
+      }
+    ];
+    showReportDialog.value = true;
+  } finally {
+    isProcessing.value = false;
+  }
 };
 
-
+/* -----------------------
+      NAVIGATION
+-------------------------*/
 const goBackHome = () => {
   router.push({ name: 'home' });
 };
@@ -95,7 +90,7 @@ const goBackHome = () => {
 
 <template>
   <v-container class="test-container" fluid>
-    <!-- Hidden native input for single-file upload -->
+    <!-- hidden input -->
     <input
       ref="fileInputEl"
       type="file"
@@ -104,7 +99,7 @@ const goBackHome = () => {
       @change="handleFileChange"
     />
 
-    <!-- Back to home -->
+    <!-- Back -->
     <div class="back-row">
       <div class="back-btn" @click="goBackHome">
         <span class="pill">Back</span>
@@ -133,7 +128,7 @@ const goBackHome = () => {
               <span class="step-number">2</span>
               <div>
                 <div class="step-title">Run a quick scan</div>
-                <div class="step-text">Trigger a fake automated check that mimics real analysis.</div>
+                <div class="step-text">Uses the backend analyzer to detect issues.</div>
               </div>
             </div>
             <div class="step">
@@ -150,7 +145,7 @@ const goBackHome = () => {
       </v-col>
     </v-row>
 
-    <!-- Uploaded list + info -->
+    <!-- Side Info -->
     <div class="preview-side-info">
       <h3 class="preview-heading mt-6">What this check looks for</h3>
       <ul class="preview-points">
@@ -161,7 +156,7 @@ const goBackHome = () => {
       </ul>
     </div>
 
-        <!-- CTA row (upload + view report) -->
+    <!-- CTA Row -->
     <div class="hero-actions">
       <v-btn
         class="primary-cta"
@@ -182,56 +177,55 @@ const goBackHome = () => {
         size="large"
         rounded="xl"
         :loading="isProcessing"
-        @click="runFakeAnalysis"
+        @click="runAnalysis"
       >
         View Web‑UI test report
       </v-btn>
     </div>
 
-          <div class="preview-side-info-text">
-         <h3 class="preview-heading">Uploaded screenshots</h3>
+    <!-- Uploaded list -->
+    <div class="preview-side-info-text">
+      <h3 class="preview-heading">Uploaded screenshots</h3>
       <div v-if="screenshotFiles.length" class="selected-files">
         <ul class="preview-points">
-          <li v-for="file in screenshotFiles" :key="file.name">
-            {{ file.name }}
-          </li>
+          <li v-for="file in screenshotFiles" :key="file.name">{{ file.name }}</li>
         </ul>
       </div>
       <div v-else class="upload-hint">
         No screenshots uploaded yet. Use “Upload your screenshots” to add one image at a time.
       </div>
-      </div>
+    </div>
 
-    <!-- Report card (fixed text, below CTAs) -->
-        <!-- Report dialog modal -->
-         <div class="hr-divider" />
-         <div>
-          <div v-if="showReportDialog = true" class="report-dialog">
-            <div class="report-header-left">
-            <h3 class="report-dialog-title">Web‑UI test report</h3>
-            <div>
-              <h4 class="sidebar-title">Screens analyzed</h4>
-              <ul class="sidebar-list">
-                <!-- <li v-for="item in report" :key="item.fileName">
-                  {{ item.fileName }}
-                </li> -->
-              </ul>
-            </div>
-            <div
-                v-for="item in report"
-                :key="item.fileName"
-                class="report-section"
-              >
-                <h4 class="report-file">{{ item.fileName }}</h4>
-                <ol class="issue-list">
-                  <li v-for="(issue, idx) in item.issues" :key="idx">
-                    {{ issue }}
-                  </li>
-                </ol>
-              </div>
-          </div>
-          </div>
-         </div>
+    <div class="hr-divider" />
+
+    <!-- Report Dialog (your same UI, now filled with real data) -->
+    <div v-if="showReportDialog" class="report-dialog">
+      <div class="report-header-left">
+        <h3 class="report-dialog-title">Web‑UI test report</h3>
+
+        <div>
+          <h4 class="sidebar-title">Screens analyzed</h4>
+          <ul class="sidebar-list">
+            <li v-for="item in report" :key="item.fileName">
+              {{ item.fileName }}
+            </li>
+          </ul>
+        </div>
+
+        <div
+          v-for="item in report"
+          :key="item.fileName"
+          class="report-section"
+        >
+          <h4 class="report-file">{{ item.fileName }}</h4>
+          <ol class="issue-list">
+            <li v-for="(issue, idx) in item.issues" :key="idx">
+              {{ issue }}
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
 
   </v-container>
 </template>
