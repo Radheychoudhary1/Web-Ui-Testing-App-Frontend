@@ -19,14 +19,20 @@ export type ScreenResult = {
   summary: { count: number; high: number; medium: number; low: number };
 };
 
-// 👇 This is the type your component imports
+// Type used by your component
 export type AnalyzeResponse = { screens: ScreenResult[] };
+
+// ---- NEW: decide base URL by environment ----
+// In production (GitHub Pages), set VITE_API_BASE to your backend URL
+// In development (Vite dev server), fall back to /api (Vite proxy)
+const API_BASE =
+  (import.meta.env && import.meta.env.VITE_API_BASE) ? import.meta.env.VITE_API_BASE : "/api";
 
 export async function analyzeScreens(files: File[]): Promise<AnalyzeResponse> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f)); // key MUST be "files"
 
-  const res = await axios.post(`/api/analyze`, form, {
+  const res = await axios.post(`${API_BASE}/analyze`, form, {
     headers: { "Content-Type": "multipart/form-data" },
     timeout: 60_000,
   });
