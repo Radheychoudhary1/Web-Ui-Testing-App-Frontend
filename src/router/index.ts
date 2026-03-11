@@ -8,6 +8,6 @@ const routes: RouteRecordRaw[] = [
 ];
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/Web-Ui-Testing-App-Frontend/'),
   routes,
 });
